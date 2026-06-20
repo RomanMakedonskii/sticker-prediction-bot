@@ -256,6 +256,9 @@ async def start(message: Message):
 async def predict_command(message: Message):
     await send_random_prediction(message)
 
+@dp.message(Command("version"))
+async def version_command(message: Message):
+    await message.answer("🤖 Версия бота: 1.1")
 
 @dp.message(F.sticker)
 async def get_sticker_id(message: Message):
