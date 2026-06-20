@@ -2,6 +2,7 @@ import asyncio
 import os
 import random
 import uuid
+import json
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart, Command
@@ -24,6 +25,7 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 STICKERS_FILE = "stickers.txt"
+STATS_FILE = "stats.json"
 
 GOOD_WORDS = [
     "легенда",
@@ -86,6 +88,42 @@ def save_sticker(sticker_id):
 
     return False
 
+def load_stats():
+    if not os.path.exists(STATS_FILE):
+        return {
+            "total_predictions": 0,
+            "users": {}
+        }
+
+    with open(STATS_FILE, "r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def save_stats(stats):
+    with open(STATS_FILE, "w", encoding="utf-8") as file:
+        json.dump(stats, file, ensure_ascii=False, indent=4)
+
+
+def add_prediction_to_stats(user):
+    stats = load_stats()
+
+    user_id = str(user.id)
+    user_name = get_user_name(user)
+
+    stats["total_predictions"] += 1
+
+    if user_id not in stats["users"]:
+        stats["users"][user_id] = {
+            "name": user_name,
+            "count": 0
+        }
+
+    stats["users"][user_id]["name"] = user_name
+    stats["users"][user_id]["count"] += 1
+
+    save_stats(stats)
+
+    return stats["users"][user_id]["count"], stats["total_predictions"]
 
 def get_user_name(user):
     if user.username:
@@ -162,7 +200,7 @@ def prediction_keyboard():
     )
 
 
-async def play_ritual_and_send(message: Message, user_name: str):
+async def play_ritual_and_send(message: Message, user_name: str, user_count=None, total_count=None):
     ritual = random.sample(RITUAL_PHRASES, random.randint(3, 5))
 
     status_msg = await message.answer(ritual[0])
@@ -173,8 +211,16 @@ async def play_ritual_and_send(message: Message, user_name: str):
 
     await asyncio.sleep(1)
 
+    prediction_text = get_prediction(user_name)
+
+    if user_count is not None and total_count is not None:
+        prediction_text += (
+            f"\n\n📊 Твоё предсказание №{user_count}"
+            f"\n🌍 Всего предсказаний: {total_count}"
+        )
+
     await status_msg.edit_text(
-        get_prediction(user_name),
+        prediction_text,
         reply_markup=prediction_keyboard()
     )
 
@@ -186,7 +232,14 @@ async def play_ritual_and_send(message: Message, user_name: str):
 
 async def send_random_prediction(message: Message):
     user_name = get_user_name(message.from_user)
-    await play_ritual_and_send(message, user_name)
+    user_count, total_count = add_prediction_to_stats(message.from_user)
+
+    await play_ritual_and_send(
+        message,
+        user_name,
+        user_count,
+        total_count
+    )
 
 
 @dp.message(CommandStart())
@@ -225,8 +278,39 @@ async def new_prediction(callback: CallbackQuery):
     await callback.answer()
 
     user_name = get_user_name(callback.from_user)
-    await play_ritual_and_send(callback.message, user_name)
+    user_count, total_count = add_prediction_to_stats(callback.from_user)
 
+    await play_ritual_and_send(
+        callback.message,
+        user_name,
+        user_count,
+        total_count
+    )
+
+
+@dp.message(Command("stats"))
+async def stats_command(message: Message):
+    stats = load_stats()
+
+    total = stats.get("total_predictions", 0)
+    users = stats.get("users", {})
+
+    if not users:
+        await message.answer("📊 Статистики пока нет.")
+        return
+
+    top_users = sorted(
+        users.values(),
+        key=lambda user: user["count"],
+        reverse=True
+    )[:10]
+
+    text = f"📊 <b>Статистика предсказаний</b>\n\n🌍 Всего предсказаний: {total}\n\n🏆 Топ пользователей:\n"
+
+    for index, user in enumerate(top_users, start=1):
+        text += f"{index}. {user['name']} — {user['count']}\n"
+
+    await message.answer(text, parse_mode="HTML")
 
 @dp.inline_query()
 async def inline_prediction(inline_query: InlineQuery):
