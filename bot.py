@@ -213,16 +213,10 @@ async def play_ritual_and_send(message: Message, user_name: str, user_count=None
 
     prediction_text = get_prediction(user_name)
 
-    if user_count is not None and total_count is not None:
-        prediction_text += (
-            f"\n\n📊 Твоё предсказание №{user_count}"
-            f"\n🌍 Всего предсказаний: {total_count}"
-        )
-
-    await status_msg.edit_text(
-        prediction_text,
-        reply_markup=prediction_keyboard()
-    )
+await status_msg.edit_text(
+    prediction_text,
+    reply_markup=prediction_keyboard()
+)
 
     stickers = load_stickers()
 
