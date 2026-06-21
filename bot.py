@@ -12,7 +12,10 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
     FSInputFile,
+    BotCommand,
 )
 from dotenv import load_dotenv
 from PIL import Image
@@ -201,6 +204,26 @@ def main_keyboard():
         ]
     )
 
+def reply_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text="🔮 Получить карту дня")
+            ]
+        ],
+        resize_keyboard=True,
+        is_persistent=True
+    )
+
+def reply_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text="🔮 Получить карту дня")
+            ]
+        ],
+        resize_keyboard=True
+    )
 
 async def play_ritual(message: Message):
     ritual = random.sample(TAROT_RITUAL_PHRASES, random.randint(5, 7))
@@ -254,9 +277,9 @@ async def start(message: Message):
     await message.answer(
         "🔮 <b>Таро Предсказание</b>\n\n"
         "Один раз в день бот вытягивает для тебя карту Таро, показывает её значение и совет на день.\n\n"
-        "Нажми кнопку ниже или отправь команду /tarot.",
+        "Нажми кнопку <b>🔮 Получить карту дня</b> или отправь команду /tarot.",
         parse_mode="HTML",
-        reply_markup=main_keyboard(),
+        reply_markup=reply_keyboard(),
     )
 
 
@@ -264,6 +287,13 @@ async def start(message: Message):
 async def tarot_command(message: Message):
     await send_daily_tarot(message, message.from_user)
 
+@dp.message(F.text == "🔮 Получить карту дня")
+async def tarot_reply_button(message: Message):
+    await send_daily_tarot(message, message.from_user)
+
+@dp.message(F.text == "🔮 Получить карту дня")
+async def tarot_button(message: Message):
+    await send_daily_tarot(message, message.from_user)
 
 @dp.message(Command("version"))
 async def version_command(message: Message):
@@ -326,9 +356,14 @@ async def daily_tarot_callback(callback: CallbackQuery):
 
 
 async def main():
+    await bot.set_my_commands(
+        [
+            BotCommand(command="start", description="Запустить бота"),
+            BotCommand(command="tarot", description="Получить карту дня"),
+            BotCommand(command="stats", description="Статистика"),
+            BotCommand(command="version", description="Версия бота"),
+        ]
+    )
+
     print("Бот запущен")
     await dp.start_polling(bot)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
