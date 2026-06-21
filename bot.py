@@ -1,8 +1,9 @@
 import asyncio
+import html
+import json
 import os
 import random
-import uuid
-import json
+from datetime import datetime, timezone, timedelta
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart, Command
@@ -11,119 +12,53 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    InlineQuery,
-    InlineQueryResultArticle,
-    InputTextMessageContent,
+    FSInputFile,
 )
 from dotenv import load_dotenv
+from PIL import Image
+
+from tarot_cards import TAROT_CARDS
 
 load_dotenv()
 
 TOKEN = os.getenv("BOT_TOKEN")
+OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-STICKERS_FILE = "stickers.txt"
+DAILY_TAROT_FILE = "daily_tarot.json"
 STATS_FILE = "stats.json"
 
-GOOD_WORDS = [
-    "легенда",
-    "император",
-    "король",
-    "магистр",
-    "чемпион",
-    "герой",
-    "избранный",
-    "гений",
-    "маэстро",
-    "мастер",
-    "победитель",
-    "повелитель удачи",
-    "архимаг",
-    "сверхразум",
-    "лучик солнца",
-    "главный красавчик",
-    "великий стратег",
-    "властелин мемов",
-    "любимец судьбы",
-    "источник вдохновения",
-]
+APP_TIMEZONE = timezone(timedelta(hours=3))
 
-RITUAL_PHRASES = [
-    "📡 Подключаюсь к космосу...",
-    "🔮 Вхожу в поток...",
-    "🃏 Перемешиваю карты...",
-    "👁 Сканирую ауру...",
-    "⚡ Запрашиваю высшие силы...",
-    "🌌 Заглядываю в будущее...",
-    "🧠 Открываю сознание...",
-    "☄️ Считываю вибрации вселенной...",
-    "🌫 Пробиваюсь через туман судьбы...",
-    "📖 Листаю книгу пророчеств...",
-    "🕯 Провожу древний ритуал...",
-    "🐈 Консультируюсь с мудрым котом...",
-    "🍀 Проверяю удачу пользователя...",
-    "🛸 Отправляю запрос пришельцам...",
-    "🎱 Трясу магический шар...",
-    "💫 Ответ уже близко...",
+TAROT_RITUAL_PHRASES = [
+    "🕯 Зажигаю свечу...",
+    "🃏 Перемешиваю колоду...",
+    "🌌 Слушаю тишину между картами...",
+    "🔮 Настраиваюсь на твой день...",
+    "👁 Смотрю, какая карта тянется к тебе...",
+    "🌫 Разгоняю туман вероятностей...",
+    "✨ Карта почти открылась...",
 ]
 
 
-def load_stickers():
-    if not os.path.exists(STICKERS_FILE):
-        return []
-
-    with open(STICKERS_FILE, "r", encoding="utf-8") as file:
-        return [line.strip() for line in file if line.strip()]
+def today_string():
+    return datetime.now(APP_TIMEZONE).date().isoformat()
 
 
-def save_sticker(sticker_id):
-    stickers = load_stickers()
+def load_json_file(file_path, default_value):
+    if not os.path.exists(file_path):
+        return default_value
 
-    if sticker_id not in stickers:
-        with open(STICKERS_FILE, "a", encoding="utf-8") as file:
-            file.write(sticker_id + "\n")
-        return True
-
-    return False
-
-def load_stats():
-    if not os.path.exists(STATS_FILE):
-        return {
-            "total_predictions": 0,
-            "users": {}
-        }
-
-    with open(STATS_FILE, "r", encoding="utf-8") as file:
+    with open(file_path, "r", encoding="utf-8") as file:
         return json.load(file)
 
 
-def save_stats(stats):
-    with open(STATS_FILE, "w", encoding="utf-8") as file:
-        json.dump(stats, file, ensure_ascii=False, indent=4)
+def save_json_file(file_path, data):
+    with open(file_path, "w", encoding="utf-8") as file:
+        json.dump(data, file, ensure_ascii=False, indent=4)
 
-
-def add_prediction_to_stats(user):
-    stats = load_stats()
-
-    user_id = str(user.id)
-    user_name = get_user_name(user)
-
-    stats["total_predictions"] += 1
-
-    if user_id not in stats["users"]:
-        stats["users"][user_id] = {
-            "name": user_name,
-            "count": 0
-        }
-
-    stats["users"][user_id]["name"] = user_name
-    stats["users"][user_id]["count"] += 1
-
-    save_stats(stats)
-
-    return stats["users"][user_id]["count"], stats["total_predictions"]
 
 def get_user_name(user):
     if user.username:
@@ -135,199 +70,259 @@ def get_user_name(user):
     return "Таинственный герой"
 
 
-def get_prediction(user_name):
-    title = random.choice(GOOD_WORDS)
+def add_stat(user, event_name):
+    stats = load_json_file(
+        STATS_FILE,
+        {
+            "events": {},
+            "users": {},
+        },
+    )
 
-    if user_name.lower() == "@kush0769" and random.randint(1, 100) <= 35:
-        kush_predictions = [
-            "🔮 А Никитулику карты советуют сегодня не спорить с судьбой",
-            "🍀 Судьба считает, что Никитулик опять что-то натворит",
-            "👁 Высшие силы внимательно наблюдают за Никитуликом",
-            "🐸 Тайный совет жаб признал Никитулика подозрительно счастливым",
-            "📡 Космос передаёт: Никитулик снова в центре событий",
-            "🃏 Карты показали, что Никитулик слегка переоценивает свои силы",
-            "🎱 Магический шар ответил: 'Это же Никитулик, всё возможно'",
-            "🌫 Пророчество предупреждает: Никитулик может внезапно захотеть приключений",
-            "⚡ Вселенная рекомендует Никитулику держаться подальше от сомнительных идей",
-            "🦄 Мифическое существо подтвердило: Никитулик сегодня особенный",
-        ]
+    user_id = str(user.id)
+    user_name = get_user_name(user)
 
-        return random.choice(kush_predictions)
+    stats["events"][event_name] = stats["events"].get(event_name, 0) + 1
 
-    special_events = [
-        f"👑 УКАЗ ВСЕЛЕННОЙ: {user_name} получает титул Верховного {title}",
-        f"🦄 МИФИЧЕСКИЙ ДРОП: {user_name} выбил ранг '{title}'",
-        f"🏆 ДОСТИЖЕНИЕ ОТКРЫТО: {user_name} — {title}",
-        f"⭐ ЗВЕЗДЫ ПОСТАНОВИЛИ: {user_name} официально {title}",
-        f"🎉 ПРАЗДНИЧНОЕ ПРОРОЧЕСТВО: {user_name} — {title}",
-    ]
+    if user_id not in stats["users"]:
+        stats["users"][user_id] = {
+            "name": user_name,
+            "events": {},
+        }
 
-    if random.randint(1, 100) <= 2:
-        return random.choice(special_events)
+    stats["users"][user_id]["name"] = user_name
+    user_events = stats["users"][user_id]["events"]
+    user_events[event_name] = user_events.get(event_name, 0) + 1
 
-    rare_predictions = [
-        f"💎 РЕДКОЕ ПРОРОЧЕСТВО: {user_name} — легендарный {title}",
-        f"👑 ВЫСШИЕ СИЛЫ ПОДТВЕРДИЛИ: {user_name} — великий {title}",
-        f"🦄 МИФИЧЕСКОЕ ВИДЕНИЕ: {user_name} всемогущий {title}",
-    ]
-
-    if random.randint(1, 100) <= 5:
-        return random.choice(rare_predictions)
-
-    predictions = [
-        f"🔮 Карты говорят: {user_name} — {title}",
-        f"✨ Звезды сошлись: {user_name} сегодня {title}",
-        f"👑 Древнее пророчество гласит: {user_name} — настоящий {title}",
-        f"🍀 Судьба решила: {user_name} — {title}",
-        f"🚀 Космос подтвердил: {user_name} радостный {title}",
-        f"😎 Мудрость дня: {user_name} — {title}",
-        f"🔥 Великий оракул сказал: {user_name} — абсолютный {title}",
-    ]
-
-    return random.choice(predictions)
+    save_json_file(STATS_FILE, stats)
 
 
-def prediction_keyboard():
+def get_card_by_id(card_id):
+    for card in TAROT_CARDS:
+        if card["id"] == card_id:
+            return card
+
+    return None
+
+
+def choose_orientation():
+    # 70% — прямая карта, 30% — перевёрнутая
+    if random.randint(1, 100) <= 30:
+        return "reversed"
+
+    return "upright"
+
+
+def get_or_create_daily_card(user):
+    daily_data = load_json_file(DAILY_TAROT_FILE, {})
+    user_id = str(user.id)
+    today = today_string()
+
+    user_record = daily_data.get(user_id)
+
+    if user_record and user_record.get("date") == today:
+        card = get_card_by_id(user_record["card_id"])
+        orientation = user_record["orientation"]
+
+        if card:
+            return card, orientation, True
+
+    card = random.choice(TAROT_CARDS)
+    orientation = choose_orientation()
+
+    daily_data[user_id] = {
+        "date": today,
+        "card_id": card["id"],
+        "orientation": orientation,
+        "user_name": get_user_name(user),
+    }
+
+    save_json_file(DAILY_TAROT_FILE, daily_data)
+
+    return card, orientation, False
+
+
+def get_card_image_path(card, orientation):
+    image_path = card["image"]
+
+    if orientation == "upright":
+        return image_path
+
+    os.makedirs("generated", exist_ok=True)
+
+    reversed_image_path = os.path.join(
+        "generated",
+        f"{card['id']}_reversed.jpg",
+    )
+
+    try:
+        with Image.open(image_path) as image:
+            rotated_image = image.rotate(180, expand=True)
+            rotated_image.save(reversed_image_path)
+
+        return reversed_image_path
+    except Exception:
+        return image_path
+
+
+def format_card_caption(card, orientation, is_repeat):
+    orientation_text = "🔺 Прямое положение" if orientation == "upright" else "🔻 Перевёрнутое положение"
+    card_meaning = card[orientation]
+    keywords = ", ".join(card["keywords"][orientation])
+
+    repeat_text = ""
+    if is_repeat:
+        repeat_text = "\n\n🔁 Сегодня твоя карта уже открыта. Показываю её ещё раз."
+
+    return (
+        f"🃏 <b>Твоя карта дня: {html.escape(card['name'])}</b>\n"
+        f"{orientation_text}\n"
+        f"Аркан: {html.escape(card['arcana'])}"
+        f"{repeat_text}\n\n"
+        f"🔑 <b>Ключевые слова:</b>\n"
+        f"{html.escape(keywords)}\n\n"
+        f"📖 <b>Значение на день:</b>\n"
+        f"{html.escape(card_meaning['meaning'])}\n\n"
+        f"💡 <b>Совет:</b>\n"
+        f"{html.escape(card_meaning['advice'])}\n\n"
+        f"Возвращайся завтра за новой картой."
+    )
+
+
+def main_keyboard():
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🔄 Еще предсказание",
-                    callback_data="new_prediction"
+                    text="🔮 Получить карту дня",
+                    callback_data="daily_tarot",
                 )
             ]
         ]
     )
 
 
-async def play_ritual_and_send(message: Message, user_name: str, user_count=None, total_count=None):
-    ritual = random.sample(RITUAL_PHRASES, random.randint(3, 5))
+async def play_ritual(message: Message):
+    ritual = random.sample(TAROT_RITUAL_PHRASES, random.randint(5, 7))
 
-    status_msg = await message.answer(ritual[0])
+    status_message = await message.answer(ritual[0])
 
     for phrase in ritual[1:]:
-        await asyncio.sleep(1)
-        await status_msg.edit_text(phrase)
+        await asyncio.sleep(1.3)
+        await status_message.edit_text(phrase)
 
-    await asyncio.sleep(1)
+    await asyncio.sleep(1.5)
+    await status_message.edit_text("🃏 Карта выбрана...")
 
-    prediction_text = get_prediction(user_name)
-
-    await status_msg.edit_text(
-        prediction_text,
-        reply_markup=prediction_keyboard()
-    )
-
-    stickers = load_stickers()
-
-    if stickers:
-        await message.answer_sticker(random.choice(stickers))
+    return status_message
 
 
-async def send_random_prediction(message: Message):
-    user_name = get_user_name(message.from_user)
-    user_count, total_count = add_prediction_to_stats(message.from_user)
+async def send_daily_tarot(message: Message, user):
+    add_stat(user, "daily_tarot_request")
 
-    await play_ritual_and_send(
-        message,
-        user_name,
-        user_count,
-        total_count
-    )
+    card, orientation, is_repeat = get_or_create_daily_card(user)
+
+    if is_repeat:
+        add_stat(user, "daily_tarot_repeat")
+    else:
+        add_stat(user, "daily_tarot_new")
+
+    await play_ritual(message)
+
+    image_path = get_card_image_path(card, orientation)
+    caption = format_card_caption(card, orientation, is_repeat)
+
+    if os.path.exists(image_path):
+        await message.answer_photo(
+            photo=FSInputFile(image_path),
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=main_keyboard(),
+        )
+    else:
+        await message.answer(
+            caption,
+            parse_mode="HTML",
+            reply_markup=main_keyboard(),
+        )
 
 
 @dp.message(CommandStart())
 async def start(message: Message):
+    add_stat(message.from_user, "start")
+
     await message.answer(
-        "🔮 <b>Стикер Таро Предсказание</b>\n\n"
-        "Нажми кнопку ниже и узнай великое пророчество.",
-        reply_markup=prediction_keyboard(),
-        parse_mode="HTML"
+        "🔮 <b>Таро Предсказание</b>\n\n"
+        "Один раз в день бот вытягивает для тебя карту Таро, показывает её значение и совет на день.\n\n"
+        "Нажми кнопку ниже или отправь команду /tarot.",
+        parse_mode="HTML",
+        reply_markup=main_keyboard(),
     )
 
 
-@dp.message(Command("predict"))
-async def predict_command(message: Message):
-    await send_random_prediction(message)
+@dp.message(Command("tarot"))
+async def tarot_command(message: Message):
+    await send_daily_tarot(message, message.from_user)
+
 
 @dp.message(Command("version"))
 async def version_command(message: Message):
-    await message.answer("🤖 Версия бота: 1.1")
-
-@dp.message(F.sticker)
-async def get_sticker_id(message: Message):
-    sticker_id = message.sticker.file_id
-    is_new = save_sticker(sticker_id)
-
-    if is_new:
-        await message.answer("✅ Стикер добавлен в базу предсказаний")
-    else:
-        await message.answer("ℹ️ Такой стикер уже есть в базе")
-
-
-@dp.message(F.text == "🔮 Получить предсказание")
-async def predict_text_button(message: Message):
-    await send_random_prediction(message)
-
-
-@dp.callback_query(F.data == "new_prediction")
-async def new_prediction(callback: CallbackQuery):
-    await callback.answer()
-
-    user_name = get_user_name(callback.from_user)
-    user_count, total_count = add_prediction_to_stats(callback.from_user)
-
-    await play_ritual_and_send(
-        callback.message,
-        user_name,
-        user_count,
-        total_count
-    )
+    await message.answer("🤖 Версия бота: 2.0 Tarot MVP")
 
 
 @dp.message(Command("stats"))
 async def stats_command(message: Message):
-    stats = load_stats()
+    if OWNER_ID != 0 and message.from_user.id != OWNER_ID:
+        await message.answer("⛔ Статистика доступна только владельцу бота.")
+        return
 
-    total = stats.get("total_predictions", 0)
+    stats = load_json_file(
+        STATS_FILE,
+        {
+            "events": {},
+            "users": {},
+        },
+    )
+
+    events = stats.get("events", {})
     users = stats.get("users", {})
 
-    if not users:
-        await message.answer("📊 Статистики пока нет.")
-        return
+    total_requests = events.get("daily_tarot_request", 0)
+    new_cards = events.get("daily_tarot_new", 0)
+    repeats = events.get("daily_tarot_repeat", 0)
+    starts = events.get("start", 0)
 
     top_users = sorted(
         users.values(),
-        key=lambda user: user["count"],
-        reverse=True
+        key=lambda item: item.get("events", {}).get("daily_tarot_request", 0),
+        reverse=True,
     )[:10]
 
-    text = f"📊 <b>Статистика предсказаний</b>\n\n🌍 Всего предсказаний: {total}\n\n🏆 Топ пользователей:\n"
+    text = (
+        "📊 <b>Статистика бота</b>\n\n"
+        f"🚀 Запусков /start: {starts}\n"
+        f"🔮 Запросов карты дня: {total_requests}\n"
+        f"🆕 Новых карт: {new_cards}\n"
+        f"🔁 Повторных показов: {repeats}\n"
+        f"👥 Уникальных пользователей: {len(users)}\n\n"
+        "🏆 <b>Топ пользователей:</b>\n"
+    )
 
-    for index, user in enumerate(top_users, start=1):
-        text += f"{index}. {user['name']} — {user['count']}\n"
+    if not top_users:
+        text += "Пока пусто."
+    else:
+        for index, user_data in enumerate(top_users, start=1):
+            user_name = html.escape(user_data["name"])
+            count = user_data.get("events", {}).get("daily_tarot_request", 0)
+            text += f"{index}. {user_name} — {count}\n"
 
     await message.answer(text, parse_mode="HTML")
 
-@dp.inline_query()
-async def inline_prediction(inline_query: InlineQuery):
-    user_name = get_user_name(inline_query.from_user)
-    prediction = get_prediction(user_name)
 
-    result = InlineQueryResultArticle(
-        id=str(uuid.uuid4()),
-        title="🔮 Получить предсказание",
-        description=prediction,
-        input_message_content=InputTextMessageContent(
-            message_text=prediction
-        )
-    )
-
-    await inline_query.answer(
-        results=[result],
-        cache_time=0,
-        is_personal=True
-    )
+@dp.callback_query(F.data == "daily_tarot")
+async def daily_tarot_callback(callback: CallbackQuery):
+    await callback.answer()
+    await send_daily_tarot(callback.message, callback.from_user)
 
 
 async def main():
