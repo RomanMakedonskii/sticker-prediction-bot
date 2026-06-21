@@ -264,13 +264,18 @@ async def start(message: Message):
 async def tarot_command(message: Message):
     await send_daily_tarot(message, message.from_user)
 
-@dp.message(F.text)
-async def text_button_handler(message: Message):
+def is_tarot_button_text(message: Message):
     text = (message.text or "").strip().lower()
 
-    if "получить" in text and ("карту" in text or "предсказание" in text):
-        await send_daily_tarot(message, message.from_user)
-        return
+    return (
+        "получить" in text
+        and ("карту" in text or "предсказание" in text)
+    )
+
+
+@dp.message(is_tarot_button_text)
+async def text_button_handler(message: Message):
+    await send_daily_tarot(message, message.from_user)
 
 @dp.message(Command("version"))
 async def version_command(message: Message):
