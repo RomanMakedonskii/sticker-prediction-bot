@@ -12,7 +12,10 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
     FSInputFile,
+    BotCommand,
 )
 from dotenv import load_dotenv
 from PIL import Image
@@ -51,8 +54,11 @@ def load_json_file(file_path, default_value):
     if not os.path.exists(file_path):
         return default_value
 
-    with open(file_path, "r", encoding="utf-8") as file:
-        return json.load(file)
+    try:
+        with open(file_path, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except (json.JSONDecodeError, OSError):
+        return default_value
 
 
 def save_json_file(file_path, data):
@@ -79,6 +85,12 @@ def add_stat(user, event_name):
         },
     )
 
+    if "events" not in stats:
+        stats["events"] = {}
+
+    if "users" not in stats:
+        stats["users"] = {}
+
     user_id = str(user.id)
     user_name = get_user_name(user)
 
@@ -91,6 +103,10 @@ def add_stat(user, event_name):
         }
 
     stats["users"][user_id]["name"] = user_name
+
+    if "events" not in stats["users"][user_id]:
+        stats["users"][user_id]["events"] = {}
+
     user_events = stats["users"][user_id]["events"]
     user_events[event_name] = user_events.get(event_name, 0) + 1
 
@@ -106,8 +122,8 @@ def get_card_by_id(card_id):
 
 
 def choose_orientation():
-    # 70% — прямая карта, 30% — перевёрнутая
-    if random.randint(1, 100) <= 30:
+    # 80% — прямая карта, 20% — перевёрнутая
+    if random.randint(1, 100) <= 20:
         return "reversed"
 
     return "upright"
@@ -122,7 +138,7 @@ def get_or_create_daily_card(user):
 
     if user_record and user_record.get("date") == today:
         card = get_card_by_id(user_record["card_id"])
-        orientation = user_record["orientation"]
+        orientation = user_record.get("orientation", "upright")
 
         if card:
             return card, orientation, True
@@ -202,6 +218,30 @@ def main_keyboard():
     )
 
 
+def reply_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text="🔮 Получить карту дня"),
+            ]
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+def is_tarot_button_text(message: Message):
+    text = (message.text or "").strip().lower()
+
+    if text.startswith("/"):
+        return False
+
+    return (
+        "получить" in text
+        and ("карту" in text or "предсказание" in text)
+    )
+
+
 async def play_ritual(message: Message):
     ritual = random.sample(TAROT_RITUAL_PHRASES, random.randint(5, 7))
 
@@ -254,9 +294,9 @@ async def start(message: Message):
     await message.answer(
         "🔮 <b>Таро Предсказание</b>\n\n"
         "Один раз в день бот вытягивает для тебя карту Таро, показывает её значение и совет на день.\n\n"
-        "Нажми кнопку ниже или отправь команду /tarot.",
+        "Нажми кнопку <b>🔮 Получить карту дня</b> внизу или отправь команду /tarot.",
         parse_mode="HTML",
-        reply_markup=main_keyboard(),
+        reply_markup=reply_keyboard(),
     )
 
 
@@ -264,17 +304,10 @@ async def start(message: Message):
 async def tarot_command(message: Message):
     await send_daily_tarot(message, message.from_user)
 
-@dp.message(F.text)
-async def text_button_handler(message: Message):
-    text = (message.text or "").strip().lower()
-
-    if "получить" in text and ("карту" in text or "предсказание" in text):
-        await send_daily_tarot(message, message.from_user)
-        return
 
 @dp.message(Command("version"))
 async def version_command(message: Message):
-    await message.answer("🤖 Версия бота: 2.0 Tarot MVP")
+    await message.answer("🤖 Версия бота: 2.1 Tarot")
 
 
 @dp.message(Command("stats"))
@@ -326,6 +359,11 @@ async def stats_command(message: Message):
     await message.answer(text, parse_mode="HTML")
 
 
+@dp.message(is_tarot_button_text)
+async def text_button_handler(message: Message):
+    await send_daily_tarot(message, message.from_user)
+
+
 @dp.callback_query(F.data == "daily_tarot")
 async def daily_tarot_callback(callback: CallbackQuery):
     await callback.answer()
@@ -333,6 +371,15 @@ async def daily_tarot_callback(callback: CallbackQuery):
 
 
 async def main():
+    await bot.set_my_commands(
+        [
+            BotCommand(command="start", description="Запустить бота"),
+            BotCommand(command="tarot", description="Получить карту дня"),
+            BotCommand(command="stats", description="Статистика"),
+            BotCommand(command="version", description="Версия бота"),
+        ]
+    )
+
     print("Бот запущен")
     await dp.start_polling(bot)
 
