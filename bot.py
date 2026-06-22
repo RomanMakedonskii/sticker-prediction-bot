@@ -181,7 +181,9 @@ def get_card_image_path(card, orientation):
         return image_path
 
 
-def format_card_caption(card, orientation, is_repeat):
+def format_card_caption(card, orientation, is_repeat, user):
+    user_name = html.escape(get_user_name(user))
+
     orientation_text = "🔺 Прямое положение" if orientation == "upright" else "🔻 Перевёрнутое положение"
     card_meaning = card[orientation]
     keywords = ", ".join(card["keywords"][orientation])
@@ -191,15 +193,16 @@ def format_card_caption(card, orientation, is_repeat):
         repeat_text = "\n\n🔁 Сегодня твоя карта уже открыта. Показываю её ещё раз."
 
     return (
-        f"🃏 <b>Твоя карта дня: {html.escape(card['name'])}</b>\n"
+        f"🔮 <b>{user_name}, твоё предсказание на сегодня</b>\n\n"
+        f"🃏 <b>Карта дня: {html.escape(card['name'])}</b>\n"
         f"{orientation_text}\n"
         f"Аркан: {html.escape(card['arcana'])}"
         f"{repeat_text}\n\n"
         f"🔑 <b>Ключевые слова:</b>\n"
         f"{html.escape(keywords)}\n\n"
-        f"📖 <b>Значение на день:</b>\n"
+        f"📖 <b>Значение для тебя:</b>\n"
         f"{html.escape(card_meaning['meaning'])}\n\n"
-        f"💡 <b>Совет:</b>\n"
+        f"💡 <b>Совет дня:</b>\n"
         f"{html.escape(card_meaning['advice'])}\n\n"
         f"Возвращайся завтра за новой картой."
     )
@@ -270,7 +273,7 @@ async def send_daily_tarot(message: Message, user):
     await play_ritual(message)
 
     image_path = get_card_image_path(card, orientation)
-    caption = format_card_caption(card, orientation, is_repeat)
+    caption = format_card_caption(card, orientation, is_repeat, user)
 
     if os.path.exists(image_path):
         await message.answer_photo(
